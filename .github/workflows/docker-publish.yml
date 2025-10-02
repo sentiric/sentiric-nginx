@@ -30,19 +30,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      # === DÜZELTİLMİŞ ADIM ===
+      # === SON DÜZELTME UYGULANMIŞ ADIM ===
       - name: Generate Docker tags
         id: meta
         run: |
           IMAGE_ID="ghcr.io/${{ github.repository }}"
-          # Temel etiketle başla
           tags="${IMAGE_ID}:${{ matrix.target }}"
-          # Eğer hedef 'alpine' ise, 'latest' etiketini YENİ BİR SATIRDA ekle
           if [ "${{ matrix.target }}" = "alpine" ]; then
             tags=$(printf "%s\n%s" "$tags" "${IMAGE_ID}:latest")
           fi
-          # Sonucu sonraki adıma aktar
-          echo "tags=${tags}" >> $GITHUB_OUTPUT
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo "${tags}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
