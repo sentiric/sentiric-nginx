@@ -12,9 +12,6 @@ jobs:
       contents: read
       packages: write
     
-    # === DEĞİŞİKLİK 1: MATRIX STRATEJİSİ TANIMLAMASI ===
-    # Bu işin, 'target' listesindeki her bir eleman için bir kez çalışmasını sağlıyoruz.
-    # Yani, bir kez target='alpine', bir kez de target='debian' olarak çalışacak.
     strategy:
       matrix:
         target: [alpine, debian]
@@ -33,34 +30,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      # === DEĞİŞİKLİK 2: DİNAMİK ETİKETLER OLUŞTURMA ===
-      # Her bir matrix çalışması için doğru etiketleri (tags) oluşturuyoruz.
-      # Alpine versiyonunu aynı zamanda 'latest' olarak da etiketleyeceğiz.
+      # === DÜZELTİLMİŞ ADIM ===
       - name: Generate Docker tags
         id: meta
         run: |
           IMAGE_ID="ghcr.io/${{ github.repository }}"
-          
-          # 1. Temel etiketi oluştur: ghcr.io/sentiric/sentiric-nginx:alpine veya :debian
-          TAGS="${IMAGE_ID}:${{ matrix.target }}"
-
-          # 2. Eğer hedef 'alpine' ise, 'latest' etiketini de ekle
-          if [[ "${{ matrix.target }}" == "alpine" ]]; then
-            TAGS="$TAGS\n${IMAGE_ID}:latest"
+          # Temel etiketle başla
+          tags="${IMAGE_ID}:${{ matrix.target }}"
+          # Eğer hedef 'alpine' ise, 'latest' etiketini YENİ BİR SATIRDA ekle
+          if [ "${{ matrix.target }}" = "alpine" ]; then
+            tags=$(printf "%s\n%s" "$tags" "${IMAGE_ID}:latest")
           fi
+          # Sonucu sonraki adıma aktar
+          echo "tags=${tags}" >> $GITHUB_OUTPUT
 
-          # Oluşturulan etiket listesini sonraki adımlarda kullanmak üzere output olarak ayarla
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
-
-      # === DEĞİŞİKLİK 3: BUILD VE PUSH ADIMINI GÜNCELLEME ===
-      # Bu adım artık matrix'ten gelen 'target' ve bir önceki adımda oluşturulan 'tags' bilgilerini kullanacak.
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          # 'target' parametresini matrix'ten dinamik olarak alıyoruz.
           target: ${{ matrix.target }}
-          # Bir önceki adımda oluşturduğumuz etiketleri kullanıyoruz.
           tags: ${{ steps.meta.outputs.tags }}
           no-cache: true
