@@ -1,11 +1,3 @@
-# =================================================================
-#    SENTIRIC PLATFORM - STANDART CI/CD DOCKER YAYINLAMA (v3.2 - Production-Ready)
-# =================================================================
-# Bu CI/CD dosyası:
-# 1. Submodule'leri (örn: sentiric-contracts) otomatik olarak çeker.
-# 2. Dockerfile'a SERVICE_NAME argümanını dinamik olarak gönderir.
-# 3. GÜVENİLİRLİK İÇİN CACHE KULLANMAZ. Her build temiz bir ortamda yapılır.
-# =================================================================
 name: Docker Image CI
 
 on:
@@ -19,19 +11,21 @@ jobs:
     permissions:
       contents: read
       packages: write
+    
+    # === DEĞİŞİKLİK 1: MATRIX STRATEJİSİ TANIMLAMASI ===
+    # Bu işin, 'target' listesindeki her bir eleman için bir kez çalışmasını sağlıyoruz.
+    # Yani, bir kez target='alpine', bir kez de target='debian' olarak çalışacak.
+    strategy:
+      matrix:
+        target: [alpine, debian]
 
     steps:
-      # Adım 1: Repoyu ve tüm alt modüllerini klonla
-      - name: Check out the repo with submodules
+      - name: Check out the repo
         uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
 
-      # Adım 2: Docker Buildx'i kur
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Adım 3: GitHub Container Registry'ye giriş yap
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -39,26 +33,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      # Adım 4: Repo adından servis adını çıkar (DÜZELTİLMİŞ YÖNTEM)
-      - name: Extract service name from repository name
-        id: get_service_name
-        # Önce tam repo adını bir shell değişkenine alıyoruz,
-        # sonra shell'in kendi özelliğini kullanarak kesiyoruz.
+      # === DEĞİŞİKLİK 2: DİNAMİK ETİKETLER OLUŞTURMA ===
+      # Her bir matrix çalışması için doğru etiketleri (tags) oluşturuyoruz.
+      # Alpine versiyonunu aynı zamanda 'latest' olarak da etiketleyeceğiz.
+      - name: Generate Docker tags
+        id: meta
         run: |
-          REPO_NAME="${{ github.repository }}"
-          echo "SERVICE_NAME=${REPO_NAME#*/}" >> $GITHUB_ENV
+          IMAGE_ID="ghcr.io/${{ github.repository }}"
+          
+          # 1. Temel etiketi oluştur: ghcr.io/sentiric/sentiric-nginx:alpine veya :debian
+          TAGS="${IMAGE_ID}:${{ matrix.target }}"
 
-      # Adım 5: Docker imajını oluştur ve yayınla (CACHE'SİZ)
+          # 2. Eğer hedef 'alpine' ise, 'latest' etiketini de ekle
+          if [[ "${{ matrix.target }}" == "alpine" ]]; then
+            TAGS="$TAGS\n${IMAGE_ID}:latest"
+          fi
+
+          # Oluşturulan etiket listesini sonraki adımlarda kullanmak üzere output olarak ayarla
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      # === DEĞİŞİKLİK 3: BUILD VE PUSH ADIMINI GÜNCELLEME ===
+      # Bu adım artık matrix'ten gelen 'target' ve bir önceki adımda oluşturulan 'tags' bilgilerini kullanacak.
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
-          # build-args ile Dockerfile'a doğru SERVICE_NAME'i gönder
-          build-args: |
-            SERVICE_NAME=${{ env.SERVICE_NAME }}
-          # Güvenilirlik için cache'i devre dışı bırakıyoruz.
-          # no-cache: true kullanmak, build sürecini yavaşlatır ancak
-          # her seferinde temiz ve tekrarlanabilir bir imaj oluşturmayı garanti eder.
+          # 'target' parametresini matrix'ten dinamik olarak alıyoruz.
+          target: ${{ matrix.target }}
+          # Bir önceki adımda oluşturduğumuz etiketleri kullanıyoruz.
+          tags: ${{ steps.meta.outputs.tags }}
           no-cache: true
